@@ -6,6 +6,7 @@ import android.graphics.BitmapFactory;
 import android.graphics.Matrix;
 
 import androidx.annotation.NonNull;
+import android.util.Log;
 
 import com.vladih.computer_vision.flutter_vision.models.Tesseract;
 import com.vladih.computer_vision.flutter_vision.models.Yolo;
@@ -20,6 +21,7 @@ import org.opencv.core.Mat;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
@@ -68,7 +70,7 @@ public class FlutterVisionPlugin implements FlutterPlugin, MethodCallHandler {
             if (!this.executor.isShutdown()) {
                 this.executor.shutdownNow();
             }
-//            System.out.println(e.getMessage());
+            // System.out.println(e.getMessage());
         }
     }
 
@@ -137,17 +139,21 @@ public class FlutterVisionPlugin implements FlutterPlugin, MethodCallHandler {
             float conf_threshold = (float) (double) (args.get("conf_threshold"));
             float class_threshold = (float) (double) (args.get("class_threshold"));
             List<Integer> class_is_text = (List<Integer>) args.get("class_is_text");
-            Bitmap bitmap = utils.feedInputToBitmap(context.getApplicationContext(), image, image_height, image_width, 90);
+            Bitmap bitmap = utils.feedInputToBitmap(context.getApplicationContext(), image, image_height, image_width,
+                    90);
             int[] shape = yolo_model.getInputTensor().shape();
-            ByteBuffer byteBuffer = utils.feedInputTensor(bitmap, shape[1], shape[2], image_width, image_height, 0, 255);
+            ByteBuffer byteBuffer = utils.feedInputTensor(bitmap, shape[1], shape[2], image_width, image_height, 0,
+                    255);
 
-            List<Map<String, Object>> yolo_results = yolo_model.detect_task(byteBuffer, image_height, image_width, iou_threshold, conf_threshold, class_threshold);
+            List<Map<String, Object>> yolo_results = yolo_model.detect_task(byteBuffer, image_height, image_width,
+                    iou_threshold, conf_threshold, class_threshold);
+                    
             for (Map<String, Object> yolo_result : yolo_results) {
                 float[] box = (float[]) yolo_result.get("box");
                 if (class_is_text.contains((int) box[5])) {
                     Bitmap crop = utils.crop_bitmap(bitmap,
                             box[0], box[1], box[2], box[3]);
-                    //utils.getScreenshotBmp(crop, "crop");
+                    // utils.getScreenshotBmp(crop, "crop");
                     Bitmap tmp = crop.copy(crop.getConfig(), crop.isMutable());
                     yolo_result.put("text", tesseract_model.predict_text(tmp));
                 } else {
@@ -225,9 +231,9 @@ public class FlutterVisionPlugin implements FlutterPlugin, MethodCallHandler {
         yolo_model.initialize_model();
     }
 
-    //https://www.baeldung.com/java-single-thread-executor-service
+    // https://www.baeldung.com/java-single-thread-executor-service
     class DetectionTask implements Runnable {
-        //    private static volatile DetectionTasks instance;
+        // private static volatile DetectionTasks instance;
         private Yolo yolo;
         byte[] image;
 
@@ -256,6 +262,7 @@ public class FlutterVisionPlugin implements FlutterPlugin, MethodCallHandler {
             this.class_threshold = (float) (double) (args.get("class_threshold"));
             this.result = result;
         }
+
         @Override
         public void run() {
             try {
@@ -263,17 +270,22 @@ public class FlutterVisionPlugin implements FlutterPlugin, MethodCallHandler {
                 if (typing == "img") {
                     bitmap = BitmapFactory.decodeByteArray(image, 0, image.length);
                 } else {
-                    //rotate image, because android take a photo rotating 90 degrees
+                    // rotate image, because android take a photo rotating 90 degrees
                     bitmap = utils.feedInputToBitmap(context, frame, image_height, image_width, 90);
                 }
                 int[] shape = yolo.getInputTensor().shape();
                 int src_width = bitmap.getWidth();
                 int src_height = bitmap.getHeight();
-                ByteBuffer byteBuffer = utils.feedInputTensor(bitmap, shape[1], shape[2], src_width, src_height, 0, 255);
-                List<Map<String, Object>> detections = yolo.detect_task(byteBuffer, src_height, src_width, iou_threshold, conf_threshold, class_threshold);
+                ByteBuffer byteBuffer = utils.feedInputTensor(bitmap, shape[1], shape[2], src_width, src_height, 0,
+                        255);
+                Log.i("tflite", "FlutterVisionPlugin - run - width: " + src_width + " height:" + src_height + " shape: "
+                        + Arrays.toString(shape));
+                List<Map<String, Object>> detections = yolo.detect_task(byteBuffer, src_height, src_width,
+                        iou_threshold, conf_threshold, class_threshold);
                 isDetecting = false;
                 result.success(detections);
             } catch (Exception e) {
+                Log.e("tflite", "Error in detection: " + e.getMessage());
                 result.error("100", "Detection Error", e);
             }
         }
@@ -345,7 +357,7 @@ public class FlutterVisionPlugin implements FlutterPlugin, MethodCallHandler {
                 mat = utils.filterTextFromImage(mat);
                 bitmap = Bitmap.createBitmap(mat.width(), mat.height(), Bitmap.Config.ARGB_8888);
                 Utils.matToBitmap(mat, bitmap);
-//        utils.getScreenshotBmp(bitmap,"TESSEREACT");
+                // utils.getScreenshotBmp(bitmap,"TESSEREACT");
                 result.success(tesseract.predict_text(bitmap));
             } catch (Exception e) {
                 result.error("100", "Prediction text Error", e);
@@ -371,14 +383,14 @@ public class FlutterVisionPlugin implements FlutterPlugin, MethodCallHandler {
         }
     }
 
-    private void close_tesseract(){
+    private void close_tesseract() {
         if (tesseract_model != null) {
             tesseract_model.close();
             tesseract_model = null;
         }
     }
 
-    private void close_yolo(){
+    private void close_yolo() {
         if (yolo_model != null) {
             yolo_model.close();
             yolo_model = null;

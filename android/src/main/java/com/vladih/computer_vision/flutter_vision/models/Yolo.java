@@ -33,6 +33,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Vector;
+import java.util.Arrays;
 
 import io.flutter.embedding.engine.FlutterEngine;
 import io.flutter.embedding.engine.plugins.FlutterPlugin;
@@ -51,13 +52,13 @@ public class Yolo {
     protected final int rotation;
 
     public Yolo(Context context,
-                String model_path,
-                boolean is_assets,
-                int num_threads,
-                boolean quantization,
-                boolean use_gpu,
-                String label_path,
-                int rotation) {
+            String model_path,
+            boolean is_assets,
+            int num_threads,
+            boolean quantization,
+            boolean use_gpu,
+            String label_path,
+            int rotation) {
         this.context = context;
         this.model_path = model_path;
         this.is_assets = is_assets;
@@ -68,7 +69,7 @@ public class Yolo {
         this.rotation = rotation;
     }
 
-    //    public Vector<String> getLabels(){return this.labels;}
+    // public Vector<String> getLabels(){return this.labels;}
     public Tensor getInputTensor() {
         return this.interpreter.getInputTensor(0);
     }
@@ -89,8 +90,7 @@ public class Yolo {
                 file_channel = input_stream.getChannel();
                 buffer = file_channel.map(
                         FileChannel.MapMode.READ_ONLY, file_descriptor.getStartOffset(),
-                        file_descriptor.getLength()
-                );
+                        file_descriptor.getLength());
                 file_descriptor.close();
             } else {
                 input_stream = new FileInputStream(new File(this.model_path));
@@ -102,9 +102,11 @@ public class Yolo {
             try {
                 // Check if GPU support is available
                 CompatibilityList compatibilityList = new CompatibilityList();
+
                 if (use_gpu && compatibilityList.isDelegateSupportedOnThisDevice()) {
                     GpuDelegateFactory.Options delegateOptions = compatibilityList.getBestOptionsForThisDevice();
-                    GpuDelegate gpuDelegate = new GpuDelegate(delegateOptions.setQuantizedModelsAllowed(this.quantization));
+                    GpuDelegate gpuDelegate = new GpuDelegate(
+                            delegateOptions.setQuantizedModelsAllowed(this.quantization));
                     interpreterOptions.addDelegate(gpuDelegate);
                 } else {
                     interpreterOptions.setNumThreads(num_threads);
@@ -119,8 +121,8 @@ public class Yolo {
             }
             this.interpreter.allocateTensors();
             this.labels = load_labels(asset_manager, label_path);
-            int[] shape = interpreter.getOutputTensor(0).shape();//3dimension
-            this.output = (float [][][]) Array.newInstance(float.class, shape);
+            int[] shape = interpreter.getOutputTensor(0).shape();// 3dimension
+            this.output = (float[][][]) Array.newInstance(float.class, shape);
         } catch (Exception e) {
             throw e;
         } finally {
@@ -157,13 +159,15 @@ public class Yolo {
     }
 
     public List<Map<String, Object>> detect_task(ByteBuffer byteBuffer,
-                                                 int source_height,
-                                                 int source_width,
-                                                 float iou_threshold,
-                                                 float conf_threshold, float class_threshold) throws Exception {
+            int source_height,
+            int source_width,
+            float iou_threshold,
+            float conf_threshold, float class_threshold) throws Exception {
         try {
             int[] input_shape = this.interpreter.getInputTensor(0).shape();
+
             this.interpreter.run(byteBuffer, this.output);
+
             List<float[]> boxes = filter_box(this.output, iou_threshold, conf_threshold,
                     class_threshold, input_shape[1], input_shape[2]);
             boxes = restore_size(boxes, input_shape[1], input_shape[2], source_width, source_height);
@@ -176,9 +180,9 @@ public class Yolo {
     }
 
     protected List<float[]> filter_box(float[][][] model_outputs, float iou_threshold,
-                                       float conf_threshold, float class_threshold, float input_width, float input_height) {
+            float conf_threshold, float class_threshold, float input_width, float input_height) {
         try {
-            //model_outputs = [1,box+model_conf+class,detected_box]
+            // model_outputs = [1,box+model_conf+class,detected_box]
             List<float[]> pre_box = new ArrayList<>();
             int conf_index = 4;
             int class_index = 5;
@@ -188,13 +192,14 @@ public class Yolo {
             int max_index = 0;
             float max = 0f;
             for (int i = 0; i < rows; i++) {
-                //convert xywh to xyxy
+                // convert xywh to xyxy
                 x1 = (model_outputs[0][i][0] - model_outputs[0][i][2] / 2f) * input_width;
                 y1 = (model_outputs[0][i][1] - model_outputs[0][i][3] / 2f) * input_height;
                 x2 = (model_outputs[0][i][0] + model_outputs[0][i][2] / 2f) * input_width;
                 y2 = (model_outputs[0][i][1] + model_outputs[0][i][3] / 2f) * input_height;
                 conf = model_outputs[0][i][conf_index];
-                if (conf < conf_threshold) continue;
+                if (conf < conf_threshold)
+                    continue;
 
                 max_index = class_index;
                 max = model_outputs[0][i][max_index];
@@ -206,7 +211,7 @@ public class Yolo {
                         max_index = j;
                     }
                 }
-                if (max > class_threshold){
+                if (max > class_threshold) {
                     float[] tmp = new float[6];
                     tmp[0] = x1;
                     tmp[1] = y1;
@@ -217,10 +222,11 @@ public class Yolo {
                     pre_box.add(tmp);
                 }
             }
-            if (pre_box.isEmpty()) return new ArrayList<>();
-            //for reverse orden, insteand of using .reversed method
+            if (pre_box.isEmpty())
+                return new ArrayList<>();
+            // for reverse orden, insteand of using .reversed method
             Comparator<float[]> compareValues = (v1, v2) -> Float.compare(v2[4], v1[4]);
-            //Collections.sort(pre_box,compareValues.reversed());
+            // Collections.sort(pre_box,compareValues.reversed());
             Collections.sort(pre_box, compareValues);
             return nms(pre_box, iou_threshold);
         } catch (Exception e) {
@@ -262,12 +268,12 @@ public class Yolo {
     }
 
     protected List<float[]> restore_size(List<float[]> nms,
-                                         int input_width,
-                                         int input_height,
-                                         int src_width,
-                                         int src_height) {
+            int input_width,
+            int input_height,
+            int src_width,
+            int src_height) {
         try {
-            //restore size after scaling, larger images
+            // restore size after scaling, larger images
             if (src_width > input_width || src_height > input_height) {
                 float gainx = src_width / (float) input_width;
                 float gainy = src_height / (float) input_height;
@@ -277,7 +283,7 @@ public class Yolo {
                     nms.get(i)[2] = min(src_width, Math.max(nms.get(i)[2] * gainx, 0));
                     nms.get(i)[3] = min(src_height, Math.max(nms.get(i)[3] * gainy, 0));
                 }
-                //restore size after padding, smaller images
+                // restore size after padding, smaller images
             } else {
                 float padx = (src_width - input_width) / 2f;
                 float pady = (src_height - input_height) / 2f;
@@ -293,13 +299,14 @@ public class Yolo {
             throw new RuntimeException(e.getMessage());
         }
     }
+
     protected List<Map<String, Object>> out(List<float[]> yolo_result, Vector<String> labels) {
         try {
             List<Map<String, Object>> result = new ArrayList<>();
-            //utils.getScreenshotBmp(bitmap, "current");
+            // utils.getScreenshotBmp(bitmap, "current");
             for (float[] box : yolo_result) {
                 Map<String, Object> output = new HashMap<>();
-                output.put("box", new float[]{box[0], box[1], box[2], box[3], box[4]}); //x1,y1,x2,y2,conf_class
+                output.put("box", new float[] { box[0], box[1], box[2], box[3], box[4] }); // x1,y1,x2,y2,conf_class
                 output.put("tag", labels.get((int) box[5]));
                 result.add(output);
             }

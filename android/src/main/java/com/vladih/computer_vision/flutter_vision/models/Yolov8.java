@@ -38,33 +38,39 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.Vector;
+import java.util.Arrays;
 
 public class Yolov8 extends Yolo {
     public Yolov8(Context context,
-                  String model_path,
-                  boolean is_assets,
-                  int num_threads,
-                  boolean quantization,
-                  boolean use_gpu,
-                  String label_path,
-                  int rotation) {
+            String model_path,
+            boolean is_assets,
+            int num_threads,
+            boolean quantization,
+            boolean use_gpu,
+            String label_path,
+            int rotation) {
         super(context, model_path, is_assets, num_threads, quantization, use_gpu, label_path, rotation);
     }
 
     @Override
     public List<Map<String, Object>> detect_task(ByteBuffer byteBuffer,
-                                                 int source_height,
-                                                 int source_width,
-                                                 float iou_threshold,
-                                                 float conf_threshold,
-                                                 float class_threshold) throws Exception {
+            int source_height,
+            int source_width,
+            float iou_threshold,
+            float conf_threshold,
+            float class_threshold) throws Exception {
         try {
             int[] input_shape = this.interpreter.getInputTensor(0).shape();
+            Log.i("tflite", "Yolov8 - detect_task -  input: " + Arrays.toString(input_shape));
+
             this.interpreter.run(byteBuffer, this.output);
-            //INFO: output from detection model is not normalized
+            // INFO: output from detection model is not normalized
+            Log.i("tflite", "Yolov8 - detect_task -  output: " + Arrays.toString(this.output));
+
             List<float[]> boxes = filter_box(this.output, iou_threshold, conf_threshold,
                     class_threshold, input_shape[1], input_shape[2]);
             boxes = restore_size(boxes, input_shape[1], input_shape[2], source_width, source_height);
+
             return out(boxes, this.labels);
         } catch (Exception e) {
             throw e;
@@ -75,20 +81,23 @@ public class Yolov8 extends Yolo {
 
     @Override
     protected List<float[]> filter_box(float[][][] model_outputs, float iou_threshold,
-                                       float conf_threshold, float class_threshold, float input_width, float input_height) {
+            float conf_threshold, float class_threshold, float input_width, float input_height) {
         try {
-            //model_outputs = [1,box+class,detected_box]
+            // model_outputs = [1,box+class,detected_box]
             List<float[]> pre_box = new ArrayList<>();
             int class_index = 4;
             int dimension = model_outputs[0][0].length;
             int rows = model_outputs[0].length;
             int max_index = 0;
             float max = 0f;
+            Log.i("tflite", "Yolov8 - filter_box -  dimension: " + dimension + ", rows: " + rows + ", input_width: "
+                    + input_width + ", input_height: " + input_height);
+
             for (int i = 0; i < dimension; i++) {
-                float x1 = (model_outputs[0][0][i] - model_outputs[0][2][i] / 2f)* input_width;
-                float y1 = (model_outputs[0][1][i] - model_outputs[0][3][i] / 2f)* input_height;
-                float x2 = (model_outputs[0][0][i] + model_outputs[0][2][i] / 2f)* input_width;
-                float y2 = (model_outputs[0][1][i] + model_outputs[0][3][i] / 2f)* input_height;
+                float x1 = (model_outputs[0][0][i] - model_outputs[0][2][i] / 2f) * input_width;
+                float y1 = (model_outputs[0][1][i] - model_outputs[0][3][i] / 2f) * input_height;
+                float x2 = (model_outputs[0][0][i] + model_outputs[0][2][i] / 2f) * input_width;
+                float y2 = (model_outputs[0][1][i] + model_outputs[0][3][i] / 2f) * input_height;
 
                 max_index = class_index;
                 max = model_outputs[0][max_index][i];
@@ -110,12 +119,18 @@ public class Yolov8 extends Yolo {
                     tmp[4] = max;
                     tmp[5] = (max_index - class_index) * 1f;
                     pre_box.add(tmp);
+
                 }
+
+                // Log variables
+
             }
-            if (pre_box.isEmpty()) return new ArrayList<>();
-            //for reverse orden, insteand of using .reversed method
+            Log.i("tflite", "Yolov8 - filter_box -  pre_box: " + pre_box.toString());
+            if (pre_box.isEmpty())
+                return new ArrayList<>();
+            // for reverse order, instead of using .reversed method
             Comparator<float[]> compareValues = (v1, v2) -> Float.compare(v2[4], v1[4]);
-            //Collections.sort(pre_box,compareValues.reversed());
+            // Collections.sort(pre_box,compareValues.reversed());
             Collections.sort(pre_box, compareValues);
             return nms(pre_box, iou_threshold);
         } catch (Exception e) {
@@ -126,13 +141,17 @@ public class Yolov8 extends Yolo {
     @Override
     protected List<Map<String, Object>> out(List<float[]> yolo_result, Vector<String> labels) {
         try {
+            Log.d("tflite", "YoloResult - out - result " + yolo_result.toString());
+
             List<Map<String, Object>> result = new ArrayList<>();
             for (float[] box : yolo_result) {
                 Map<String, Object> output = new HashMap<>();
-                output.put("box", new float[]{box[0], box[1], box[2], box[3], box[4]}); //x1,y1,x2,y2,conf_class
+                output.put("box", new float[] { box[0], box[1], box[2], box[3], box[4] }); // x1,y1,x2,y2,conf_class
                 output.put("tag", labels.get((int) box[5]));
                 result.add(output);
             }
+            Log.d("tflite", "Yolov8 - out - result " + result.toString());
+
             return result;
         } catch (Exception e) {
             throw e;
